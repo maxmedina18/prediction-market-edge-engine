@@ -3,6 +3,7 @@ Edge Engine V0
 
 Command-line tool for analyzing binary prediction-market trades.
 """
+from engine.logger import log_trade, today_string
 
 from engine.ev import (
     implied_probability,
@@ -105,6 +106,42 @@ def main() -> None:
     print(f"0.25 Kelly stake: {money(quarter_kelly_stake)}")
     print(f"Beginner capped stake: {money(capped_stake)}")
     print(f"Verdict: {verdict}")
+    should_log = input("\nLog this trade? [y/n]: ").strip().lower()
+
+    if should_log == "y":
+        sport = input("Sport: ").strip()
+        event = input("Event: ").strip()
+        market = input("Market: ").strip()
+        notes = input("Notes: ").strip()
+
+        log_trade(
+            {
+                "date": today_string(),
+                "sport": sport,
+                "event": event,
+                "market": market,
+                "price": price,
+                "estimated_probability": probability,
+                "stake": stake,
+                "bankroll": bankroll,
+                "fee_rate": fee_rate,
+                "confidence": confidence,
+                "edge": edge,
+                "ev_per_contract": ev,
+                "expected_profit": expected_profit,
+                "roi": roi,
+                "full_kelly": full_kelly,
+                "quarter_kelly": quarter_kelly,
+                "beginner_capped_stake": capped_stake,
+                "verdict": verdict,
+                "result": "",
+                "closing_price": "",
+                "clv": "",
+                "notes": notes,
+            }
+        )
+
+        print("Trade logged to data/trades.csv.")
 
     print("\n=== COACH NOTE ===")
 
