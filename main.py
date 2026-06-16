@@ -2,9 +2,17 @@
 Edge Engine V0
 
 Command-line tool for analyzing binary prediction-market trades.
-"""
-from engine.logger import log_trade, today_string
 
+This version uses calibrated probability:
+- raw_probability = your original estimate
+- calibrated_prob = adjusted estimate based on your historical calibration
+
+Early on, calibrated_prob will equal raw_probability because there is not enough
+settled trade data yet. Later, once you have enough trades, the engine can
+self-correct overconfidence.
+"""
+
+from engine.calibration import calibrated_probability
 from engine.ev import (
     implied_probability,
     ev_per_contract,
@@ -17,6 +25,7 @@ from engine.kelly import (
     suggested_kelly_stake,
     beginner_capped_stake,
 )
+from engine.logger import log_trade, today_string
 from engine.verdict import get_trade_verdict
 
 
@@ -72,23 +81,43 @@ def main() -> None:
     confidence = ask_confidence()
 
     implied = implied_probability(price)
-    edge = probability - implied
 
-    ev = ev_per_contract(price, probability, fee_rate)
-    expected_profit = expected_profit_on_stake(price, probability, stake, fee_rate)
-    roi = expected_roi(price, probability, fee_rate)
+    raw_probability = probability
+    calibrated_prob = calibrated_probability(raw_probability)
 
-    full_kelly = full_kelly_fraction(price, probability)
-    quarter_kelly = fractional_kelly_fraction(price, probability, fraction=0.25)
-    quarter_kelly_stake = suggested_kelly_stake(
-        bankroll, price, probability, fraction=0.25
+    edge = calibrated_prob - implied
+
+    ev = ev_per_contract(price, calibrated_prob, fee_rate)
+    expected_profit = expected_profit_on_stake(
+        price,
+        calibrated_prob,
+        stake,
+        fee_rate,
     )
-    capped_stake = beginner_capped_stake(bankroll, price, probability)
+    roi = expected_roi(price, calibrated_prob, fee_rate)
+
+    full_kelly = full_kelly_fraction(price, calibrated_prob)
+    quarter_kelly = fractional_kelly_fraction(
+        price,
+        calibrated_prob,
+        fraction=0.25,
+    )
+    quarter_kelly_stake = suggested_kelly_stake(
+        bankroll,
+        price,
+        calibrated_prob,
+        fraction=0.25,
+    )
+    capped_stake = beginner_capped_stake(
+        bankroll,
+        price,
+        calibrated_prob,
+    )
 
     verdict = get_trade_verdict(
         bankroll=bankroll,
         price=price,
-        probability=probability,
+        probability=calibrated_prob,
         stake=stake,
         fee_rate=fee_rate,
         confidence=confidence,
@@ -96,8 +125,9 @@ def main() -> None:
 
     print("\n=== TRADE ANALYSIS ===")
     print(f"Market implied probability: {pct(implied)}")
-    print(f"Your estimated probability: {pct(probability)}")
-    print(f"Edge: {pct(edge)}")
+    print(f"Raw estimated probability: {pct(raw_probability)}")
+    print(f"Calibrated probability: {pct(calibrated_prob)}")
+    print(f"Edge using calibrated probability: {pct(edge)}")
     print(f"EV per contract: {money(ev)}")
     print(f"Expected profit on stake: {money(expected_profit)}")
     print(f"Expected ROI: {pct(roi)}")
@@ -106,6 +136,18 @@ def main() -> None:
     print(f"0.25 Kelly stake: {money(quarter_kelly_stake)}")
     print(f"Beginner capped stake: {money(capped_stake)}")
     print(f"Verdict: {verdict}")
+
+    print("\n=== COACH NOTE ===")
+
+    if confidence == "low":
+        print("Your estimate is low-confidence. Treat this as research, not a real edge.")
+    elif verdict.startswith("REDUCE"):
+        print("The idea may be okay, but your size is the problem.")
+    elif verdict.startswith("PASS"):
+        print("Do not force it. Passing is a profitable skill.")
+    else:
+        print("Small trade only. Log it, track CLV, and judge the process later.")
+
     should_log = input("\nLog this trade? [y/n]: ").strip().lower()
 
     if should_log == "y":
@@ -121,7 +163,7 @@ def main() -> None:
                 "event": event,
                 "market": market,
                 "price": price,
-                "estimated_probability": probability,
+                "estimated_probability": raw_probability,
                 "stake": stake,
                 "bankroll": bankroll,
                 "fee_rate": fee_rate,
@@ -137,22 +179,12 @@ def main() -> None:
                 "result": "",
                 "closing_price": "",
                 "clv": "",
+                "profit_loss": "",
                 "notes": notes,
             }
         )
 
         print("Trade logged to data/trades.csv.")
-
-    print("\n=== COACH NOTE ===")
-
-    if confidence == "low":
-        print("Your estimate is low-confidence. Treat this as research, not a real edge.")
-    elif verdict.startswith("REDUCE"):
-        print("The idea may be okay, but your size is the problem.")
-    elif verdict.startswith("PASS"):
-        print("Do not force it. Passing is a profitable skill.")
-    else:
-        print("Small trade only. Log it, track CLV, and judge the process later.")
 
 
 if __name__ == "__main__":
