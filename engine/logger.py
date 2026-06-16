@@ -2,11 +2,12 @@
 Trade logging utilities.
 
 This module writes analyzed trades to data/trades.csv so we can track:
+- raw estimated probability
+- calibrated probability
 - EV
 - CLV
 - confidence
 - outcomes
-- calibration
 - bankroll performance
 """
 
@@ -25,6 +26,7 @@ FIELDNAMES = [
     "market",
     "price",
     "estimated_probability",
+    "calibrated_probability",
     "stake",
     "bankroll",
     "fee_rate",
@@ -40,6 +42,7 @@ FIELDNAMES = [
     "result",
     "closing_price",
     "clv",
+    "profit_loss",
     "notes",
 ]
 

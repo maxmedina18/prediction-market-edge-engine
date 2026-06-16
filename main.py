@@ -164,6 +164,7 @@ def main() -> None:
                 "market": market,
                 "price": price,
                 "estimated_probability": raw_probability,
+                "calibrated_probability": calibrated_prob,
                 "stake": stake,
                 "bankroll": bankroll,
                 "fee_rate": fee_rate,
