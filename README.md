@@ -1,4 +1,4 @@
-Prediction Market Edge Engine
+#Prediction Market Edge Engine
 
 A Python-based decision-support engine for analyzing binary prediction-market trades.
 
