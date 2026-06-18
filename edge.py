@@ -16,6 +16,9 @@ MENU_OPTIONS = {
     "5": ("Settle trade", "settle_trade.py"),
     "6": ("View summary", "summary.py"),
     "7": ("View calibration", "calibration.py"),
+    "8": ("View risk dashboard", "risk_dashboard.py"),
+    "9": ("Validate trade log", "validate_trades.py"),
+    "10": ("Exit", None),
 }
 
 
@@ -27,17 +30,17 @@ def print_menu() -> None:
     print("\n=== EDGE ENGINE ===")
     for key, (label, _) in MENU_OPTIONS.items():
         print(f"{key}. {label}")
-    print("8. Exit")
+
+
+def run_validate_trades() -> None:
+    import validate_trades
+    validate_trades.main()
 
 
 def main() -> None:
     while True:
         print_menu()
         choice = input("\nChoose an option: ").strip()
-
-        if choice == "8":
-            print("Exiting Edge Engine.")
-            break
 
         option = MENU_OPTIONS.get(choice)
 
@@ -47,8 +50,16 @@ def main() -> None:
 
         label, script_name = option
 
+        if script_name is None:
+            print("Exiting Edge Engine.")
+            break
+
         print(f"\n--- Running: {label} ---\n")
-        run_script(script_name)
+
+        if script_name == "validate_trades.py":
+            run_validate_trades()
+        else:
+            run_script(script_name)
 
 
 if __name__ == "__main__":
