@@ -1,10 +1,13 @@
 """
-Calibration dashboard for Edge Engine.
+Calibration dashboard.
 
-This script checks whether estimated probabilities match actual outcomes.
+This script checks whether your estimated probabilities match reality.
 
-Example:
-If you estimate 70% on many trades, do those trades win around 70%?
+It only uses trades that have:
+- estimated_probability filled in
+- result = win or loss
+
+Legacy manual entries with blank probabilities are skipped on purpose.
 """
 
 import csv
@@ -12,7 +15,6 @@ from pathlib import Path
 
 
 TRADE_LOG_PATH = Path("data/trades.csv")
-
 
 BUCKETS = [
     (0.50, 0.55),
@@ -29,11 +31,10 @@ BUCKETS = [
 
 
 def safe_float(value: str) -> float | None:
-    """Convert string to float safely."""
     if value is None:
         return None
 
-    value = value.strip()
+    value = str(value).strip()
 
     if value == "":
         return None
@@ -45,9 +46,8 @@ def safe_float(value: str) -> float | None:
 
 
 def read_trades(path: Path = TRADE_LOG_PATH) -> list[dict]:
-    """Read trades from CSV."""
     if not path.exists():
-        raise FileNotFoundError(f"No trade log found at {path}")
+        return []
 
     with path.open("r", newline="") as file:
         return list(csv.DictReader(file))
@@ -61,32 +61,35 @@ def money(value: float) -> str:
     return f"${value:.2f}"
 
 
-def bucket_label(low: float, high: float) -> str:
-    return f"{int(low * 100)}-{int(high * 100)}%"
+def average(values: list[float]) -> float:
+    if not values:
+        return 0.0
+
+    return sum(values) / len(values)
 
 
-def get_bucket(probability: float) -> tuple[float, float] | None:
-    """
-    Return the probability bucket for a given estimated probability.
-    """
-    for low, high in BUCKETS:
-        if low <= probability < high:
-            return low, high
+def ask_mode_filter() -> str:
+    while True:
+        mode = input("Mode filter [real/paper/test/all]: ").strip().lower()
 
-    if probability == 1.0:
-        return BUCKETS[-1]
+        if mode in {"real", "paper", "test", "all"}:
+            return mode
 
-    return None
+        print("Please enter real, paper, test, or all.")
+
+
+def filter_by_mode(trades: list[dict], mode_filter: str) -> list[dict]:
+    if mode_filter == "all":
+        return trades
+
+    return [
+        trade
+        for trade in trades
+        if trade.get("mode", "").strip().lower() == mode_filter
+    ]
 
 
 def result_to_score(result: str) -> float | None:
-    """
-    Convert result into calibration score.
-
-    win = 1
-    loss = 0
-    push = ignored
-    """
     result = result.strip().lower()
 
     if result == "win":
@@ -98,117 +101,121 @@ def result_to_score(result: str) -> float | None:
     return None
 
 
-def average(values: list[float]) -> float:
-    if not values:
-        return 0.0
+def get_bucket(probability: float) -> tuple[float, float] | None:
+    for low, high in BUCKETS:
+        if low <= probability < high:
+            return low, high
 
-    return sum(values) / len(values)
+    if probability == 1.0:
+        return BUCKETS[-1]
+
+    return None
 
 
 def main() -> None:
-    trades = read_trades()
-
-    settled = [
-        trade for trade in trades
-        if trade.get("result", "").strip().lower() in {"win", "loss"}
-    ]
-
-    bucket_data: dict[tuple[float, float], list[dict]] = {
-        bucket: [] for bucket in BUCKETS
-    }
-
-    for trade in settled:
-        probability = safe_float(trade.get("estimated_probability", ""))
-        result_score = result_to_score(trade.get("result", ""))
-
-        if probability is None or result_score is None:
-            continue
-
-        bucket = get_bucket(probability)
-
-        if bucket is None:
-            continue
-
-        trade["_result_score"] = result_score
-        bucket_data[bucket].append(trade)
-
     print("\n=== CALIBRATION DASHBOARD ===")
+    print("Checks whether your estimated probabilities match actual results.")
+    print("Legacy manual entries with blank probabilities are skipped.\n")
 
-    if not settled:
-        print("No settled win/loss trades yet. Settle trades first, then rerun this.")
+    all_trades = read_trades()
+
+    if not all_trades:
+        print("No trades found in data/trades.csv.")
         return
 
-    print(
-        f"{'Bucket':<10} "
-        f"{'Trades':<8} "
-        f"{'Avg Est':<10} "
-        f"{'Win Rate':<10} "
-        f"{'Error':<10} "
-        f"{'Avg CLV':<10} "
-        f"{'Avg P/L':<10}"
-    )
+    mode_filter = ask_mode_filter()
+    trades = filter_by_mode(all_trades, mode_filter)
 
-    print("-" * 78)
+    if not trades:
+        print(f"No trades found for mode: {mode_filter}")
+        return
 
-    all_errors = []
+    usable_trades = []
 
-    for bucket, bucket_trades in bucket_data.items():
+    skipped_legacy_or_missing_prob = 0
+    skipped_open_or_push = 0
+
+    for trade in trades:
+        estimated_probability = safe_float(trade.get("estimated_probability", ""))
+        score = result_to_score(trade.get("result", ""))
+
+        if estimated_probability is None:
+            skipped_legacy_or_missing_prob += 1
+            continue
+
+        if score is None:
+            skipped_open_or_push += 1
+            continue
+
+        usable_trades.append(
+            {
+                "trade": trade,
+                "estimated_probability": estimated_probability,
+                "score": score,
+            }
+        )
+
+    print(f"Mode: {mode_filter}")
+    print(f"Total trades scanned: {len(trades)}")
+    print(f"Usable calibrated trades: {len(usable_trades)}")
+    print(f"Skipped missing probability / legacy entries: {skipped_legacy_or_missing_prob}")
+    print(f"Skipped open/push trades: {skipped_open_or_push}")
+
+    if not usable_trades:
+        print("\nNo settled win/loss trades with estimated probabilities found yet.")
+        print("This is normal early on.")
+        print("Use main.py for future trades so calibration can learn from them.")
+        return
+
+    print("\n=== BUCKET RESULTS ===")
+
+    for low, high in BUCKETS:
+        bucket_trades = [
+            item
+            for item in usable_trades
+            if low <= item["estimated_probability"] < high
+        ]
+
         if not bucket_trades:
             continue
 
-        estimated_probs = [
-            safe_float(trade.get("estimated_probability", "")) or 0.0
-            for trade in bucket_trades
-        ]
+        estimates = [item["estimated_probability"] for item in bucket_trades]
+        scores = [item["score"] for item in bucket_trades]
 
-        scores = [
-            trade["_result_score"]
-            for trade in bucket_trades
-        ]
+        avg_estimate = average(estimates)
+        win_rate = average(scores)
+        error = win_rate - avg_estimate
 
         clvs = [
-            safe_float(trade.get("clv", ""))
-            for trade in bucket_trades
+            safe_float(item["trade"].get("clv", ""))
+            for item in bucket_trades
         ]
         clvs = [value for value in clvs if value is not None]
 
         profit_losses = [
-            safe_float(trade.get("profit_loss", ""))
-            for trade in bucket_trades
+            safe_float(item["trade"].get("profit_loss", ""))
+            for item in bucket_trades
         ]
         profit_losses = [value for value in profit_losses if value is not None]
 
-        avg_estimate = average(estimated_probs)
-        win_rate = average(scores)
-        calibration_error = win_rate - avg_estimate
+        print(f"\nBucket: {pct(low)} to {pct(high)}")
+        print(f"Trades: {len(bucket_trades)}")
+        print(f"Average estimate: {pct(avg_estimate)}")
+        print(f"Actual win rate: {pct(win_rate)}")
+        print(f"Calibration error: {pct(error)}")
+        print(f"Average CLV: {average(clvs):.4f}")
+        print(f"Total P/L: {money(sum(profit_losses))}")
 
-        all_errors.append(abs(calibration_error))
-
-        print(
-            f"{bucket_label(*bucket):<10} "
-            f"{len(bucket_trades):<8} "
-            f"{pct(avg_estimate):<10} "
-            f"{pct(win_rate):<10} "
-            f"{pct(calibration_error):<10} "
-            f"{average(clvs):<10.4f} "
-            f"{money(average(profit_losses)):<10}"
-        )
+        if len(bucket_trades) < 20:
+            print("Sample warning: fewer than 20 trades in this bucket.")
 
     print("\n=== COACH READ ===")
 
-    total_settled = len(settled)
-
-    if total_settled < 20:
-        print("Sample size is tiny. Do not draw strong conclusions yet.")
-        print("For now, just keep logging trades honestly.")
-        return
-
-    avg_abs_error = average(all_errors)
-
-    if avg_abs_error <= 0.05:
-        print("Strong calibration signal: your estimates are close to reality.")
-    elif avg_abs_error <= 0.10:
-        print("Decent but noisy: your estimates are usable, but need tightening.")
+    if len(usable_trades) < 20:
+        print("Too early to judge calibration. You need more settled engine-logged trades.")
     else:
-        print("Warning: your probability estimates are poorly calibrated.")
-        print("You may be overconfident or misreading markets.")
+        print("Start looking for buckets where your estimated probability is consistently too high or too low.")
+
+
+if __name__ == "__main__":
+    main()
