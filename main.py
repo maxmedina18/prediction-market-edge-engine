@@ -3,13 +3,15 @@ Edge Engine V0
 
 Command-line tool for analyzing binary prediction-market trades.
 
-This version uses calibrated probability:
-- raw_probability = your original estimate
-- calibrated_prob = adjusted estimate based on your historical calibration
+This version uses:
+- calibrated probability
+- EV
+- Kelly sizing
+- verdict logic
+- trade logging
+- risk guard firewall
 
-Early on, calibrated_prob will equal raw_probability because there is not enough
-settled trade data yet. Later, once you have enough trades, the engine can
-self-correct overconfidence.
+The risk guard blocks reckless real-money trades during learning mode.
 """
 
 from engine.calibration import calibrated_probability
@@ -26,6 +28,7 @@ from engine.kelly import (
     beginner_capped_stake,
 )
 from engine.logger import log_trade, today_string
+from engine.risk_guard import risk_guard_check, risk_guard_label
 from engine.verdict import get_trade_verdict
 
 
@@ -68,11 +71,23 @@ def ask_confidence() -> str:
         print("Please enter low, medium, or high.")
 
 
+def ask_mode() -> str:
+    """Ask user for trade mode."""
+    while True:
+        mode = input("Trade mode [test/paper/real]: ").strip().lower()
+
+        if mode in {"test", "paper", "real"}:
+            return mode
+
+        print("Please enter test, paper, or real.")
+
+
 def main() -> None:
     print("\n=== KALSHI EDGE ENGINE V0 ===")
     print("Use decimals: 65c = 0.65, 70% = 0.70")
     print("--------------------------------\n")
 
+    mode = ask_mode()
     bankroll = ask_float("Bankroll: ")
     price = ask_float("Contract price: ")
     probability = ask_float("Your estimated probability: ")
@@ -123,7 +138,18 @@ def main() -> None:
         confidence=confidence,
     )
 
+    allowed, risk_issues = risk_guard_check(
+        bankroll=bankroll,
+        stake=stake,
+        confidence=confidence,
+        verdict=verdict,
+        mode=mode,
+    )
+
+    risk_label = risk_guard_label(allowed)
+
     print("\n=== TRADE ANALYSIS ===")
+    print(f"Trade mode: {mode}")
     print(f"Market implied probability: {pct(implied)}")
     print(f"Raw estimated probability: {pct(raw_probability)}")
     print(f"Calibrated probability: {pct(calibrated_prob)}")
@@ -137,9 +163,20 @@ def main() -> None:
     print(f"Beginner capped stake: {money(capped_stake)}")
     print(f"Verdict: {verdict}")
 
+    print("\n=== RISK GUARD ===")
+    print(f"Risk guard: {risk_label}")
+
+    if risk_issues:
+        print("\nBlocked reasons:")
+        for issue in risk_issues:
+            print(f"- {issue}")
+
     print("\n=== COACH NOTE ===")
 
-    if confidence == "low":
+    if not allowed:
+        print("Do not place this as a real-money trade. The firewall caught a rule violation.")
+        print("Use paper mode if you want to track the idea without risking money.")
+    elif confidence == "low":
         print("Your estimate is low-confidence. Treat this as research, not a real edge.")
     elif verdict.startswith("REDUCE"):
         print("The idea may be okay, but your size is the problem.")
@@ -151,6 +188,18 @@ def main() -> None:
     should_log = input("\nLog this trade? [y/n]: ").strip().lower()
 
     if should_log == "y":
+        if mode == "real" and not allowed:
+            override = input(
+                "Risk guard blocked this real trade. Log anyway as paper? [y/n]: "
+            ).strip().lower()
+
+            if override == "y":
+                mode = "paper"
+                print("Logging as paper trade instead of real.")
+            else:
+                print("Trade not logged.")
+                return
+
         sport = input("Sport: ").strip()
         event = input("Event: ").strip()
         market = input("Market: ").strip()
@@ -159,6 +208,7 @@ def main() -> None:
         log_trade(
             {
                 "date": today_string(),
+                "mode": mode,
                 "sport": sport,
                 "event": event,
                 "market": market,
@@ -176,7 +226,7 @@ def main() -> None:
                 "full_kelly": full_kelly,
                 "quarter_kelly": quarter_kelly,
                 "beginner_capped_stake": capped_stake,
-                "verdict": verdict,
+                "verdict": verdict if allowed else f"BLOCKED - {verdict}",
                 "result": "",
                 "closing_price": "",
                 "clv": "",
