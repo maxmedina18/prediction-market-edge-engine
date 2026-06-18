@@ -28,6 +28,12 @@ REQUIRED_COLUMNS = {
     "clv",
     "profit_loss",
     "notes",
+    "review_market_valid",
+    "review_estimate_sourced",
+    "review_followed_stake_rules",
+    "review_beat_closing_line",
+    "review_emotional",
+    "review_lesson",
 }
 
 VALID_MODES = {"test", "paper", "real", "manual", "legacy"}

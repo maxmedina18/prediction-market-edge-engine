@@ -14,11 +14,12 @@ MENU_OPTIONS = {
     "3": ("Estimate probability from multi-book consensus", "estimate_consensus.py"),
     "4": ("Run market check", "market_check.py"),
     "5": ("Settle trade", "settle_trade.py"),
-    "6": ("View summary", "summary.py"),
-    "7": ("View calibration", "calibration.py"),
-    "8": ("View risk dashboard", "risk_dashboard.py"),
-    "9": ("Validate trade log", "validate_trades.py"),
-    "10": ("Exit", None),
+    "6": ("Review settled trade", "trade_review.py"),
+    "7": ("View summary", "summary.py"),
+    "8": ("View calibration", "calibration.py"),
+    "9": ("View risk dashboard", "risk_dashboard.py"),
+    "10": ("Validate trade log", "validate_trades.py"),
+    "11": ("Exit", None),
 }
 
 
