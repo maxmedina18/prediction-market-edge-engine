@@ -7,12 +7,14 @@ then updates:
 - closing_price
 - clv
 - profit_loss
+- current bankroll, but only for real trades
 """
 
 import csv
 from pathlib import Path
 
 from engine.settlement import calculate_clv, calculate_profit_loss
+from engine.bankroll import load_bankroll, save_bankroll
 
 
 TRADE_LOG_PATH = Path("data/trades.csv")
@@ -51,6 +53,28 @@ def safe_float(value: str) -> float | None:
         return float(value)
     except ValueError:
         return None
+
+
+def update_bankroll_after_settlement(mode: str, profit_loss: float) -> None:
+    """
+    Update bankroll only when a real-money trade is settled.
+    Paper and test trades should not affect bankroll.json.
+    """
+    if mode.lower() != "real":
+        return
+
+    bankroll_data = load_bankroll()
+    current_bankroll = float(bankroll_data.get("current_bankroll", 0.0))
+
+    new_bankroll = round(current_bankroll + float(profit_loss), 2)
+    bankroll_data["current_bankroll"] = new_bankroll
+
+    save_bankroll(bankroll_data)
+
+    print(
+        f"Bankroll updated: ${current_bankroll:.2f} -> "
+        f"${new_bankroll:.2f}"
+    )
 
 
 def show_open_trades(trades: list[dict]) -> list[int]:
@@ -127,6 +151,7 @@ def main() -> None:
 
     trade = trades[selected]
 
+    mode = trade.get("mode", "").strip().lower()
     entry_price = safe_float(trade.get("price", ""))
     stake = safe_float(trade.get("stake", ""))
     fee_rate = safe_float(trade.get("fee_rate", ""))
@@ -153,6 +178,8 @@ def main() -> None:
         fee_rate=fee_rate,
     )
 
+    update_bankroll_after_settlement(mode, profit_loss)
+
     trade["result"] = result
     trade["closing_price"] = closing_price
     trade["clv"] = clv
@@ -163,6 +190,7 @@ def main() -> None:
     print("\n=== TRADE SETTLED ===")
     print(f"Event: {trade.get('event', '')}")
     print(f"Market: {trade.get('market', '')}")
+    print(f"Mode: {mode}")
     print(f"Result: {result}")
     print(f"CLV: {clv:.4f}")
     print(f"Profit/Loss: ${profit_loss:.2f}")

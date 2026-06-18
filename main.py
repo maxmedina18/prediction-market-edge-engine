@@ -15,6 +15,7 @@ The risk guard blocks reckless real-money trades during learning mode.
 """
 
 from engine.calibration import calibrated_probability
+from engine.bankroll import get_current_bankroll
 from engine.ev import (
     implied_probability,
     ev_per_contract,
@@ -88,7 +89,8 @@ def main() -> None:
     print("--------------------------------\n")
 
     mode = ask_mode()
-    bankroll = ask_float("Bankroll: ")
+    bankroll = get_current_bankroll()
+    print(f"Using saved bankroll: ${bankroll:.2f}")
     price = ask_float("Contract price: ")
     probability = ask_float("Your estimated probability: ")
     stake = ask_float("Stake: ")

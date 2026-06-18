@@ -1,0 +1,7 @@
+{
+  "starting_bankroll": 50.0,
+  "current_bankroll": 50.0,
+  "daily_loss_limit": -3.0,
+  "max_real_trade": 1.0,
+  "max_bankroll_fraction": 0.02
+}
